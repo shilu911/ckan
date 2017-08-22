@@ -19,6 +19,8 @@ from routes.middleware import RoutesMiddleware
 from repoze.who.config import WhoConfig
 from repoze.who.middleware import PluggableAuthenticationMiddleware
 from fanstatic import Fanstatic
+from webob.request import FakeCGIBody
+import tempfile
 
 from ckan.plugins import PluginImplementations
 from ckan.plugins.interfaces import IMiddleware
@@ -64,6 +66,8 @@ def make_app(conf, full_stack=True, static_files=True, **app_conf):
 
     for plugin in PluginImplementations(IMiddleware):
         app = plugin.make_middleware(app, config)
+
+    app = CloseWSGIInputMiddleware(app, config)
 
     # Routing/Session/Cache Middleware
     app = RoutesMiddleware(app, config['routes.map'])
@@ -223,6 +227,29 @@ class I18nMiddleware(object):
             else:
                 environ['CKAN_CURRENT_URL'] = path_info
 
+        return self.app(environ, start_response)
+
+
+class CloseWSGIInputMiddleware(object):
+    '''
+    webob.request.Request has habit to create FakeCGIBody. This leads(
+    during file upload) to creating temporary files that are not closed.
+    For long lived processes this means that for each upload you will
+    spend the same amount of temporary space as size of uploaded
+    file additionally, until server restart(this will automatically
+    close temporary files).
+
+    This middleware is supposed to close such files after each request.
+    '''
+    def __init__(self, app, config):
+        self.app = app
+
+    def __call__(self, environ, start_response):
+        wsgi_input = environ['wsgi.input']
+        if isinstance(wsgi_input, FakeCGIBody):
+            upload = wsgi_input.vars.get('upload')
+            if upload is not None:
+                upload.fp.close()
         return self.app(environ, start_response)
 
 
