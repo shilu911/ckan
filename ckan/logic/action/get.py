@@ -1806,6 +1806,8 @@ def package_search(context, data_dict):
     for key in [key for key in data_dict.keys() if key.startswith('ext_')]:
         data_dict['extras'][key] = data_dict.pop(key)
 
+    data_dict.pop('include_other_condition', None)
+
     # check if some extension needs to modify the search params
     for item in plugins.PluginImplementations(plugins.IPackageController):
         data_dict = item.before_search(data_dict)
@@ -1834,6 +1836,7 @@ def package_search(context, data_dict):
         # Remove before these hit solr FIXME: whitelist instead
         include_private = asbool(data_dict.pop('include_private', False))
         include_drafts = asbool(data_dict.pop('include_drafts', False))
+        include_other_condition = data_dict.pop('include_other_condition', None)
 
         capacity_fq = 'capacity:"public"'
         if include_private and authz.is_sysadmin(user):
@@ -1849,6 +1852,10 @@ def package_search(context, data_dict):
                 capacity_fq = '({0} OR creator_user_id:({1}))'.format(
                     capacity_fq,
                     authz.get_user_id_for_username(user))
+            if include_other_condition:
+                capacity_fq = '({0} OR {1})'.format(
+                    capacity_fq,
+                    include_other_condition)
 
         if capacity_fq:
             fq = ' '.join(p for p in fq.split() if 'capacity:' not in p)
