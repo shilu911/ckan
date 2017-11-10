@@ -211,14 +211,14 @@ class ResourceUpload(object):
         # in the same location
         if self.filename:
             try:
-                os.makedirs(directory)
-            except OSError, e:
-                ## errno 17 is file already exists
-                if e.errno != 17:
-                    raise
-            tmp_filepath = filepath + '~'
-            with open(tmp_filepath, 'wb+') as output_file:
-                with self.upload_file:
+                try:
+                    os.makedirs(directory)
+                except OSError, e:
+                    ## errno 17 is file already exists
+                    if e.errno != 17:
+                        raise
+                tmp_filepath = filepath + '~'
+                with open(tmp_filepath, 'wb+') as output_file:
                     self.upload_file.seek(0)
                     current_size = 0
                     while True:
@@ -234,7 +234,9 @@ class ResourceUpload(object):
                             raise logic.ValidationError(
                                 {'upload': ['File upload too large']}
                             )
-                os.rename(tmp_filepath, filepath)
+                    os.rename(tmp_filepath, filepath)
+            finally:
+                self.upload_file.close()
             return
 
         # The resource form only sets self.clear (via the input clear_upload)
