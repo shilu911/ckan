@@ -6,8 +6,10 @@ import urllib2
 import hashlib
 import urllib
 import json
+import cgi
 
 import sqlalchemy as sa
+from webob.request import FakeCGIBody
 
 from ckan.lib.i18n import get_locales_from_config
 
@@ -77,6 +79,31 @@ class RootPathMiddleware(object):
         if 'SCRIPT_NAME' in environ:
             environ['SCRIPT_NAME'] = ''
 
+        return self.app(environ, start_response)
+
+
+class CloseWSGIInputMiddleware(object):
+    '''
+    webob.request.Request has habit to create FakeCGIBody. This leads(
+    during file upload) to creating temporary files that are not closed.
+    For long lived processes this means that for each upload you will
+    spend the same amount of temporary space as size of uploaded
+    file additionally, until server restart(this will automatically
+    close temporary files).
+    This middleware is supposed to close such files after each request.
+    '''
+    def __init__(self, app, config):
+        self.app = app
+
+    def __call__(self, environ, start_response):
+        wsgi_input = environ['wsgi.input']
+        if isinstance(wsgi_input, FakeCGIBody):
+            for _, item in wsgi_input.vars.items():
+                if not isinstance(item, cgi.FieldStorage):
+                    continue
+                fp = getattr(item, 'fp', None)
+                if fp is not None:
+                    fp.close()
         return self.app(environ, start_response)
 
 
